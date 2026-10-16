@@ -80,6 +80,16 @@ weekly, on GitHub's native **amd64** (`ubuntu-24.04`) and **arm64**
 (`ubuntu-24.04-arm`) runners. Each run's summary records the time until all
 services are healthy and the memory every container uses at rest.
 
+First recorded run (2026-10-16), after `verify.sh`:
+
+| | amd64 | arm64 |
+|---|---|---|
+| `up` until all healthy | 71 s | 66 s |
+| Brain (local NER / NLI / reranker models loaded) | 3.7 GB | 3.7 GB |
+| Auth + Billing + Postgres + Redis + SurrealDB | 0.8 GB | 0.9 GB |
+
+Plan for about 5 GB of RAM; Brain is most of it.
+
 ## Deploy on a server
 
 1. Point three hostnames at the server, for example `auth.example.com`,
