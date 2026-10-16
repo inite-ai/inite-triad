@@ -1,0 +1,65 @@
+name: e2e
+
+# Brings the whole Triad up from the released images, bootstraps it and runs
+# verify.sh — real tokens from Auth used on Brain and Billing — on native
+# amd64 and arm64 runners. This is the check behind "runs on arm64".
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  triad:
+    name: triad (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Configure
+        run: cp .env.example .env
+
+      - name: Up
+        run: |
+          start=$(date +%s)
+          docker compose up -d --wait --wait-timeout 600
+          echo "all services healthy after $(( $(date +%s) - start ))s on $(uname -m)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Bootstrap
+        run: ./bootstrap.sh
+
+      - name: Verify
+        run: ./verify.sh
+
+      - name: Resources
+        if: always()
+        run: |
+          {
+            echo '### Memory at rest'
+            echo '```'
+            docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}'
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+
+      - name: Down
+        if: always()
+        run: docker compose down -v

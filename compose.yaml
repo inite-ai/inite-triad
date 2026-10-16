@@ -1,0 +1,251 @@
+# INITE Triad — Auth (issuer) + Brain (MCP memory) + Billing, one stack.
+#
+#   cp .env.example .env      # then set real secrets for anything but localhost
+#   docker compose up -d --wait
+#   ./bootstrap.sh            # admin user + the OAuth clients
+#   ./verify.sh               # a real token from Auth, used on Brain and Billing
+#
+# Wiring follows the Triad token contract, which is normative for every value
+# below: §8 of
+# https://github.com/inite-ai/inite-ecosystem/blob/main/docs/triad-compatibility.md
+# (machine-readable twin: registry/compatibility.yaml in inite-ai/inite-ecosystem).
+#
+#   * ONE issuer. Auth signs `iss` = AUTH_PUBLIC_URL (JWT_ISSUER) and advertises
+#     the same string in discovery (OIDC_ISSUER) — rule I-1. Brain and Billing
+#     pin exactly that value (AUTH_SERVICE_ISSUER / JWT_ISSUER).
+#   * Keys are fetched over the compose network (http://auth:3002), not from
+#     the public URL: the issuer is a value pinned in the token, the JWKS host
+#     is just where the keys live (rule I-2, T-5).
+#   * Audiences: Brain accepts `brain`, BRAIN_PUBLIC_URL and <url>/mcp (A-5);
+#     Billing accepts `inite-billing` + its own /mcp resources (A-6).
+#   * RBAC_TOKEN_CLAIMS_ENABLED=true on Auth — Brain maps a person to a tenant
+#     through the `org` claim (O-3); PERSONAL_WORKSPACE_PROVISIONING_ENABLED
+#     gives a new user a workspace on their first brain:* request.
+#
+# Images are the official release images, multi-arch (linux/amd64 +
+# linux/arm64 — runs natively on Oracle Always Free Ampere). Versions are
+# pinned in .env; the matrix that says which combinations work is §9 of the
+# contract. Upgrade order: Auth → Brain → Billing (§10).
+
+name: inite-triad
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  # ── shared infrastructure ────────────────────────────────────────────────
+  postgres:
+    <<: *restart
+    # pgvector: billing's schema uses the `vector` type.
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # Read by postgres/init-databases.sh on the first boot of the volume:
+      # one database + one owner role per service, nothing shared.
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}
+      BILLING_DB_PASSWORD: ${BILLING_DB_PASSWORD:?set BILLING_DB_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    <<: *restart
+    image: redis:7.4-alpine
+    # Internal network only (no published port). No password: billing's
+    # BullMQ connection does not read credentials from REDIS_URL yet, so a
+    # password here would break billing's queues.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  surrealdb:
+    <<: *restart
+    image: surrealdb/surrealdb:v3.2.4
+    user: root            # rocksdb files under /data need root in this image
+    command:
+      - start
+      - --user=root
+      - --pass=${SURREALDB_ROOT_PASSWORD:?set SURREALDB_ROOT_PASSWORD in .env}
+      - --bind=0.0.0.0:8000
+      - rocksdb:/data/db
+    volumes:
+      - surrealdb-data:/data/db
+    healthcheck:
+      test: ["CMD", "/surreal", "is-ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # ── Auth: the issuer ─────────────────────────────────────────────────────
+  # One-shot: create Auth's RS256 signing key on the first `up` and keep it
+  # in a volume. Re-runs leave an existing key alone. Rotating it is a
+  # deliberate operation (contract B-3), not something a restart should do.
+  auth-keys:
+    image: ${INITE_REGISTRY:-mikefluff}/inite-auth-service:${AUTH_VERSION:?set AUTH_VERSION in .env}
+    user: "0"
+    entrypoint: ["node", "-e"]
+    command:
+      - |
+        const fs = require('fs'), crypto = require('crypto');
+        const dir = '/keys', priv = dir + '/private.pem', pub = dir + '/public.pem';
+        if (fs.existsSync(priv) && fs.existsSync(pub)) { console.log('[auth-keys] signing key present'); process.exit(0); }
+        const k = crypto.generateKeyPairSync('rsa', { modulusLength: 2048,
+          publicKeyEncoding: { type: 'spki', format: 'pem' },
+          privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
+        fs.writeFileSync(priv, k.privateKey, { mode: 0o600 });
+        fs.writeFileSync(pub, k.publicKey, { mode: 0o644 });
+        fs.chownSync(priv, 1001, 1001); fs.chownSync(pub, 1001, 1001);
+        console.log('[auth-keys] generated a new RS256 signing key');
+    volumes:
+      - auth-keys:/keys
+    restart: "no"
+
+  auth:
+    <<: *restart
+    image: ${INITE_REGISTRY:-mikefluff}/inite-auth-service:${AUTH_VERSION}
+    depends_on:
+      auth-keys: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    # The image migrates its database at boot (scripts/migrate.js); the PEMs
+    # come from the auth-keys volume rather than from multi-line .env values.
+    command:
+      - sh
+      - -c
+      - >-
+        export JWT_PRIVATE_KEY="$$(cat /keys/private.pem)"
+        JWT_PUBLIC_KEY="$$(cat /keys/public.pem)" &&
+        node scripts/migrate.js && exec node dist/main
+    environment:
+      NODE_ENV: production
+      PORT: "3002"
+      DATABASE_URL: postgresql://auth:${AUTH_DB_PASSWORD}@postgres:5432/auth
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      # The issuer (§2). Both MUST be the same string, no trailing slash.
+      JWT_ISSUER: ${AUTH_PUBLIC_URL:?set AUTH_PUBLIC_URL in .env}
+      OIDC_ISSUER: ${AUTH_PUBLIC_URL}
+      API_URL: ${AUTH_PUBLIC_URL}
+      JWT_ACTIVE_KID: ${AUTH_JWT_KID:-auth-rs256-key-1}
+      SESSION_SECRET: ${AUTH_SESSION_SECRET:?set AUTH_SESSION_SECRET in .env}
+      JWT_SECRET: ${AUTH_SESSION_SECRET}
+      REFRESH_TOKEN_HMAC_SECRET: ${AUTH_REFRESH_TOKEN_HMAC_SECRET:?set AUTH_REFRESH_TOKEN_HMAC_SECRET in .env}
+      FIELD_ENCRYPTION_KEY: ${AUTH_FIELD_ENCRYPTION_KEY:?set AUTH_FIELD_ENCRYPTION_KEY in .env}
+      # Tokens (§5): `org`/`org_id` in access tokens — Brain needs them.
+      # These are operator settings; env is the fallback an admin override
+      # in Auth's Settings page would take precedence over.
+      RBAC_TOKEN_CLAIMS_ENABLED: "true"
+      PERSONAL_WORKSPACE_PROVISIONING_ENABLED: "true"
+      FRONTEND_URL: ${AUTH_FRONTEND_URL:-${AUTH_PUBLIC_URL}}
+      CORS_ORIGINS: ${AUTH_CORS_ORIGINS:-}
+      RP_NAME: ${AUTH_RP_NAME:-INITE Identity}
+      RP_ID: ${AUTH_RP_ID:-localhost}
+      RP_ORIGIN: ${AUTH_RP_ORIGIN:-${AUTH_PUBLIC_URL}}
+      DID_METHOD: key
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@example.com}
+    volumes:
+      - auth-keys:/keys:ro
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${AUTH_PORT:-3002}:3002"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ── Brain: MCP memory, a verifier ────────────────────────────────────────
+  brain:
+    <<: *restart
+    image: ${INITE_REGISTRY:-mikefluff}/inite-brain-service:${BRAIN_VERSION:?set BRAIN_VERSION in .env}
+    depends_on:
+      surrealdb: { condition: service_healthy }
+      auth: { condition: service_healthy }
+    environment:
+      PORT: "3000"
+      SURREALDB_URL: ws://surrealdb:8000
+      SURREALDB_USERNAME: root
+      SURREALDB_PASSWORD: ${SURREALDB_ROOT_PASSWORD}
+      SURREALDB_NAMESPACE: brain
+      SURREALDB_SCOPED_USER: brain_caller
+      SURREALDB_SCOPED_PASS: ${SURREALDB_SCOPED_PASSWORD:?set SURREALDB_SCOPED_PASSWORD in .env}
+      FORGET_HMAC_KEY: ${BRAIN_FORGET_HMAC_KEY:?set BRAIN_FORGET_HMAC_KEY in .env}
+      # Required at boot (format sk-…). Extraction, embeddings and synthesis
+      # call OpenAI; reads like tools/list and workspace_status do not.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY in .env}
+      BRAIN_API_KEYS: ${BRAIN_API_KEYS:-[]}
+      # Verification of Auth tokens (§8.1, Brain).
+      AUTH_SERVICE_URL: http://auth:3002
+      AUTH_SERVICE_JWKS_URL: http://auth:3002/.well-known/jwks.json
+      AUTH_SERVICE_ISSUER: ${AUTH_PUBLIC_URL}
+      AUTH_SERVICE_AUDIENCE: brain
+      BRAIN_PUBLIC_URL: ${BRAIN_PUBLIC_URL:?set BRAIN_PUBLIC_URL in .env}
+    volumes:
+      # ONNX model cache (BGE-M3 / NER / reranker, ~700 MB on first use).
+      - brain-model-cache:/app/.cache
+    init: true
+    stop_grace_period: 30s
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${BRAIN_PORT:-3004}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ── Billing: money, a verifier ───────────────────────────────────────────
+  billing:
+    <<: *restart
+    image: ${INITE_REGISTRY:-mikefluff}/inite-billing-service:${BILLING_VERSION:?set BILLING_VERSION in .env}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      auth: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgresql://billing:${BILLING_DB_PASSWORD}@postgres:5432/billing?schema=billing
+      REDIS_URL: redis://redis:6379
+      # Verification of Auth tokens (§8.1, Billing). JWKS =
+      # <AUTH_SERVICE_URL>/.well-known/jwks.json, fetched in-network.
+      AUTH_SERVICE_URL: http://auth:3002
+      JWT_ISSUER: ${AUTH_PUBLIC_URL}
+      JWT_AUDIENCE: inite-billing
+      FRONTEND_URL: ${BILLING_PUBLIC_URL:?set BILLING_PUBLIC_URL in .env}
+      CORS_ORIGINS: ${BILLING_CORS_ORIGINS:-${BILLING_PUBLIC_URL}}
+      # Seals wallet / relayer private keys at rest (32 bytes, base64).
+      KEY_SEAL_SECRET: ${BILLING_KEY_SEAL_SECRET:?set BILLING_KEY_SEAL_SECRET in .env}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      NOTIFICATIONS_EMAIL_ENABLED: "false"
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${BILLING_PORT:-3003}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+volumes:
+  postgres-data:
+  redis-data:
+  surrealdb-data:
+  auth-keys:
+  brain-model-cache:
