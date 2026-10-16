@@ -5,7 +5,7 @@
 ![auth](https://img.shields.io/badge/auth-v1.12.0-38bdf8)
 ![brain](https://img.shields.io/badge/brain-v2.4.0-34d399)
 ![billing](https://img.shields.io/badge/billing-v1.4.0-a78bfa)
-[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![license](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 
 Run three self-hosted services as one platform with one compose file:
 sign-in, billing and long-term memory for AI agents.
@@ -31,7 +31,7 @@ flowchart LR
 One issuer, single-audience tokens: a token minted for Brain is refused by
 Billing and the other way round. The rules for `iss`, `aud`, `sub`, `org`,
 scopes, key rotation and upgrades are the
-**[Triad token & compatibility contract](https://github.com/inite-ai/inite-ecosystem/blob/main/docs/triad-compatibility.md)**.
+**[Triad token & compatibility contract](docs/compatibility.md)**.
 This repo wires the services exactly as §8 of it says.
 
 ## Quick start
@@ -139,10 +139,9 @@ Each image migrates its own database at boot. Auth goes first because it only
 starts emitting what released verifiers already accept; the exception — a new
 issuer URL, signing key or audience — goes to the verifiers first. Which
 versions work together:
-[contract §9](https://github.com/inite-ai/inite-ecosystem/blob/main/docs/triad-compatibility.md#9-version-compatibility-matrix).
+[contract §9](docs/compatibility.md#9-version-compatibility-matrix).
 
 ## License
 
-This deployment kit is MIT. The services it runs are AGPL-3.0 — see each
-service's repository. If the Triad is useful to you, a star on the services
+AGPL-3.0, like the services it runs. If the Triad is useful to you, a star on the services
 you run helps the project.

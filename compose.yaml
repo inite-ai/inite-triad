@@ -6,9 +6,7 @@
 #   ./verify.sh               # a real token from Auth, used on Brain and Billing
 #
 # Wiring follows the Triad token contract, which is normative for every value
-# below: §8 of
-# https://github.com/inite-ai/inite-ecosystem/blob/main/docs/triad-compatibility.md
-# (machine-readable twin: registry/compatibility.yaml in inite-ai/inite-ecosystem).
+# below: §8 of docs/compatibility.md in this repository.
 #
 #   * ONE issuer. Auth signs `iss` = AUTH_PUBLIC_URL (JWT_ISSUER) and advertises
 #     the same string in discovery (OIDC_ISSUER) — rule I-1. Brain and Billing
