@@ -65,7 +65,8 @@ evidence and the divergences found while writing it are in
 
 ## 3. `aud` — audience (RFC 8707)
 
-- **A-1.** Auth puts exactly one string in `aud` on every access token:
+- **A-1.** Auth puts exactly one string in `aud` on every OAuth access token
+  (issued by `/token` or the device and token-exchange grants):
   - the RFC 8707 `resource` the client named — authorization code (`/authorize?resource=`),
     device flow (`/device_authorization?resource=`), token exchange
     (`resource=` or `audience=`), and `client_credentials` (`audience=`, or
@@ -164,10 +165,16 @@ evidence and the divergences found while writing it are in
   Brain additionally knows `registry:curate`, `brain:read_media` and
   `brain:platform_admin`; they are never minted by Auth tokens (env/operator
   keys only). A verifier MUST drop scopes it does not know rather than fail.
-- **C-3.** Lifetimes: user access tokens `JWT_ACCESS_TOKEN_EXPIRY` (default
+- **C-3.** Lifetimes of OAuth tokens: user access tokens `JWT_ACCESS_TOKEN_EXPIRY` (default
   10 min), M2M / exchange `JWT_M2M_ACCESS_TOKEN_EXPIRY` (default 5 min),
   refresh tokens 7 days, rotated on every use; a replayed refresh token
   revokes its family and answers `400 invalid_grant` (auth #228).
+- **C-3a. Auth's own session token is not an access token.** The token
+  Auth's password/passkey login returns (`/v1/auth/password/login` and
+  siblings) carries no `aud` and lives 1 h; it authenticates the person to
+  Auth's own UI and APIs only. Verifiers MUST refuse it — the `aud` check
+  already does — and clients MUST NOT send it to Brain or Billing; they get
+  an OAuth token for that resource instead.
 - **C-4. Clock skew.** Auth emits `iat` and `exp`, no `nbf`. Verifiers MUST
   check `exp` and MUST NOT reject a token for an `iat` slightly in the future.
   Hosts MUST run NTP; no extra skew allowance is configured (0 s on both
@@ -361,7 +368,7 @@ unchanged (reason given).
 | D-20 | §8.1 (this doc) | said the RBAC / personal-workspace flags are Admin → Settings only; Auth reads them DB override → env (`src/common/settings/settings.service.ts:24`) | doc (here) |
 | D-21 | auth `scripts/*.ts` (`create-admin-user.ts:5` …), `package.json` `create-admin` | `new PrismaClient()` without the driver adapter Prisma 7 requires — every operator script throws; `create-admin` ran through ts-node, which the image prunes | fixed — auth #241; inite-triad's `bootstrap.sh` uses the admin API meanwhile |
 | D-22 | billing `src/app.module.ts:51` | BullMQ connection built from REDIS_URL host+port only: a password-protected Redis breaks every queue | fixed — billing #240; inite-triad runs Redis without a password, network-internal |
-| D-23 | auth `src/auth/auth.service.ts:302` | the password/passkey login token (`/v1/auth/password/login`) has no `aud` and a fixed 1 h TTL, against A-1 / C-3 | open — it is Auth's first-party session token; both verifiers refuse it (checked by inite-triad's `verify.sh`), so A-1/C-3 should name OAuth-issued tokens or Auth should stamp it |
+| D-23 | auth `src/auth/auth.service.ts:302` | the password/passkey login token (`/v1/auth/password/login`) has no `aud` and a fixed 1 h TTL, against A-1 / C-3 | resolved in the contract — A-1/C-3 now name OAuth tokens and C-3a makes the session token Auth-only; both verifiers refuse it, and inite-triad's `verify.sh` checks that |
 
 ## 12. Conformance tests
 
