@@ -1,2 +1,4 @@
 .env
 .secrets/
+.claude/settings.local.json
+.claude/*.lock

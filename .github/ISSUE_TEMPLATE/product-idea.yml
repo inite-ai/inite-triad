@@ -1,0 +1,51 @@
+name: Product idea
+description: Something you want the INITE Triad (Auth + Brain + Billing together) to make possible. Plain words are fine.
+title: "idea: "
+labels: [idea]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        No engineering knowledge needed. If an AI agent helped you (`/contribute` or `/spec-idea`
+        in Claude Code, or "read AGENTS.md"), paste its spec at the bottom.
+        An idea for only one service fits better in that service's repo — see "Which repo owns
+        what" in [AGENTS.md](https://github.com/inite-ai/inite-triad/blob/main/AGENTS.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What do you want to be possible?
+      placeholder: "e.g. an agent pays for each memory write with its credits"
+    validations:
+      required: true
+  - type: textarea
+    id: who
+    attributes:
+      label: Who is it for / why
+      placeholder: Who needs this, and what do they do today instead?
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: How would you know it works?
+      placeholder: What you would try, and what you would expect to see.
+    validations:
+      required: true
+  - type: checkboxes
+    id: parts
+    attributes:
+      label: Which parts does it touch?
+      description: Best guess; "not sure" is fine.
+      options:
+        - label: Auth (identity, sign-in, OAuth clients, tokens)
+        - label: Billing (plans, payments, credits, wallets, checkout)
+        - label: Brain (memory, knowledge, MCP memory tools)
+        - label: The Triad deployment (compose, bootstrap, verify checks, the token contract)
+        - label: Not sure
+  - type: textarea
+    id: spec
+    attributes:
+      label: Spec (if an agent wrote one)
+      description: Problem, visible behaviour, changes per repo, contract impact, risks, out of scope.
+    validations:
+      required: false

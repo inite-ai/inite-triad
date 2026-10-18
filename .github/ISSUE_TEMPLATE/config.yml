@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/inite-ai/inite-triad/blob/main/SECURITY.md
+    about: Report privately by email — never in a public issue.
+  - name: Auth idea or bug (identity, sign-in, OAuth, tokens)
+    url: https://github.com/inite-ai/inite-auth-service/issues/new/choose
+    about: Only Auth is involved? File it there.
+  - name: Billing idea or bug (plans, payments, credits, wallets)
+    url: https://github.com/inite-ai/inite-billing-service/issues/new/choose
+    about: Only Billing is involved? File it there.
+  - name: Brain idea or bug (memory, knowledge, MCP memory tools)
+    url: https://github.com/inite-ai/inite-brain-service/issues/new/choose
+    about: Only Brain is involved? File it there.

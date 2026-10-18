@@ -89,7 +89,7 @@ echo "✓ $ADMIN_EMAIL is an Auth administrator"
 login="$(jq -nc --arg e "$ADMIN_EMAIL" --arg p "$ADMIN_PASSWORD" '{email:$e,password:$p}')"
 ADMIN_TOKEN="$(curl -sf -H 'content-type: application/json' -d "$login" \
   "$AUTH_URL/v1/auth/password/login" | jq -r .access_token)"
-[ -n "$ADMIN_TOKEN" ] && [ "$ADMIN_TOKEN" != null ] || { echo "✗ admin login failed" >&2; exit 1; }
+if [ -z "$ADMIN_TOKEN" ] || [ "$ADMIN_TOKEN" = null ]; then echo "✗ admin login failed" >&2; exit 1; fi
 
 # ── 2. OAuth clients ────────────────────────────────────────────────────────
 client() { # client <id> <json> → creates it once, stores the secret
