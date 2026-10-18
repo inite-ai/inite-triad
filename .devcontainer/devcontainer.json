@@ -1,0 +1,28 @@
+{
+  "name": "INITE Triad",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    // Docker-in-Docker: `docker compose up` runs the whole stack inside the codespace.
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  // Brain alone uses ~4 GB at rest; see "Tested on" in the README.
+  "hostRequirements": { "cpus": 4, "memory": "8gb" },
+  // shellcheck, actionlint, jq, and a localhost .env from .env.example.
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "forwardPorts": [3002, 3003, 3004],
+  "portsAttributes": {
+    "3002": { "label": "Auth (issuer)" },
+    "3003": { "label": "Billing" },
+    "3004": { "label": "Brain (MCP at /mcp)" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "timonwong.shellcheck",
+        "github.vscode-github-actions",
+        "ms-azuretools.vscode-docker",
+        "redhat.vscode-yaml"
+      ]
+    }
+  }
+}

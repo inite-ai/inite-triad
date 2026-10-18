@@ -1,0 +1,53 @@
+name: lint
+
+# The light gates from AGENTS.md → Commands, plus a build of the dev container
+# (Codespaces) so it cannot rot unnoticed. The full stack runs in e2e.yml.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install actionlint
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash \
+            | bash -s -- 1.7.12 "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: shellcheck
+        run: |
+          shellcheck --version
+          shellcheck bootstrap.sh verify.sh postgres/init-databases.sh .devcontainer/post-create.sh
+
+      - name: actionlint
+        run: actionlint
+
+      - name: compose config
+        run: docker compose --env-file .env.example config -q
+
+  devcontainer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build the dev container and run the gates inside it
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3.1900000450
+        with:
+          push: never
+          runCmd: |
+            shellcheck bootstrap.sh verify.sh postgres/init-databases.sh .devcontainer/post-create.sh
+            actionlint
+            docker compose --env-file .env.example config -q
