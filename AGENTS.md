@@ -144,7 +144,8 @@ What CI runs ([lint.yml](.github/workflows/lint.yml), [e2e.yml](.github/workflow
 | devcontainer build | `devcontainers/ci` builds `.devcontainer/` and runs the three gates inside | CI only |
 | end to end | `cp .env.example .env && docker compose up -d --wait --wait-timeout 600 && ./bootstrap.sh && ./verify.sh` | CI (amd64 + arm64) |
 
-There is no build, unit test or formatter. `verify.sh` has no single-check mode;
+CI runs Ubuntu 24.04's shellcheck (0.9.0), which flags some things newer
+releases do not — CI is the judge. There is no build, unit test or formatter. `verify.sh` has no single-check mode;
 it runs top to bottom.
 
 Bumping a version after a release (green): confirm the release and the
