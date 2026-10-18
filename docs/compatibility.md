@@ -211,7 +211,7 @@ evidence and the divergences found while writing it are in
   expire.
 - **B-4. Stricter verification is opt-in for one minor**, then default
   (billing `JWT_AUDIENCE`: warn now, required next minor).
-- **B-5.** The contract version in `registry/compatibility.yaml` is bumped
+- **B-5.** The contract version on this document's *Status* line is bumped
   MINOR for an additive rule, MAJOR for a rule that rejects tokens that were
   accepted before.
 

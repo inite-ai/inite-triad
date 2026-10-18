@@ -234,9 +234,9 @@ success and calls `fail` (exit 1) otherwise — never a warning that passes.
 - anything in a red zone, any edit to `docs/compatibility.md` (including §9 / §11);
 - starting the stack locally;
 - a version bump across a major, or one whose e2e run fails;
-- which contract version to bump: §7 B-5 names `registry/compatibility.yaml`,
-  which is not in this repo — the version shown here is the *Status* line of
-  `docs/compatibility.md`;
+- which contract version to bump (§7 B-5: MINOR for an additive rule, MAJOR
+  for one that rejects previously accepted tokens — the *Status* line of
+  `docs/compatibility.md`);
 - an e2e failure that looks like a service bug (it belongs upstream);
 - licensing, security, or the idea doesn't fit any of the four repos.
 
