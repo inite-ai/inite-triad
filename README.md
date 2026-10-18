@@ -141,6 +141,19 @@ issuer URL, signing key or audience — goes to the verifiers first. Which
 versions work together:
 [contract §9](docs/compatibility.md#9-version-compatibility-matrix).
 
+## Contribute with an AI agent
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/inite-ai/inite-triad)
+
+Describe the idea in plain words and let the agent do the engineering:
+open this repo in Claude Code and run `/contribute` (or `/spec-idea` to only
+file it), or tell any agent "read AGENTS.md and help me add …". This repo is
+the entry point for ideas that span Auth, Brain and Billing — the agent first
+works out which repo owns the idea and, if it is another one, tells you which
+to clone. The rules agents follow are in [AGENTS.md](AGENTS.md); the human
+version is [CONTRIBUTING.md](CONTRIBUTING.md). The Codespace comes with Docker,
+so the whole stack can run inside it (pick 4 cores / 8 GB).
+
 ## License
 
 AGPL-3.0, like the services it runs. If the Triad is useful to you, a star on the services
