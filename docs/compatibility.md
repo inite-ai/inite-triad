@@ -1,6 +1,6 @@
 # INITE Triad — token & compatibility contract
 
-> **Status:** normative, contract version **1.0.0**.
+> **Status:** normative, contract version **1.1.0**.
 
 The INITE Triad is the three horizontal services every project on the
 platform authenticates and bills through:
@@ -159,12 +159,24 @@ evidence and the divergences found while writing it are in
   | `openid profile email offline_access` | Auth | yes |
   | `brain:read`, `brain:write` | brain | yes |
   | `brain:admin`, `brain:read_pii` | brain | no (operator-provisioned) |
+  | `brain:erase` | brain | no (a product backend's GDPR path: erase one person, nothing else) |
+  | `brain:tenants` | brain (`client_credentials` machine clients only) | no |
   | `registry:publish`, `indexer:write` | brain (`ik_…` keys / M2M only) | no |
   | `billing:account` | billing `/mcp` | yes |
   | `wallet:pay` | billing `/mcp/wallet` | yes |
   Brain additionally knows `registry:curate`, `brain:read_media` and
   `brain:platform_admin`; they are never minted by Auth tokens (env/operator
   keys only). A verifier MUST drop scopes it does not know rather than fail.
+- **C-2a. Child tenants (`brain:tenants`).** A machine token with
+  `brain:tenants` MAY send `X-Brain-Child-Tenant: <child>` to Brain; the
+  request then runs in tenant `<companyId>__<child>`, where `<companyId>`
+  is the token's own tenant (§5) and `<child>` matches
+  `^[a-z0-9][a-z0-9-]{0,39}$`. Brain MUST derive the parent from the token,
+  never from the request, so a client reaches only its own children. `__`
+  is reserved: Auth SHOULD NOT issue a client whose `companyId` contains it,
+  and Brain refuses such a credential. User-bound tokens (with `org`) MUST
+  NOT name a child. Design: inite-brain-service
+  `docs/adr/0001-child-tenants.md`.
 - **C-3.** Lifetimes of OAuth tokens: user access tokens `JWT_ACCESS_TOKEN_EXPIRY` (default
   10 min), M2M / exchange `JWT_M2M_ACCESS_TOKEN_EXPIRY` (default 5 min),
   refresh tokens 7 days, rotated on every use; a replayed refresh token
